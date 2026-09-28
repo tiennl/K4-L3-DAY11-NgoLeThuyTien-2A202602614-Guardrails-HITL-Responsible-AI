@@ -280,9 +280,21 @@ def create_red_agent_advance():
         return agent, runner
 
     if red_uses_gemini():
+        from google.adk.models import Gemini
+
         plugins = [GuardsInputPlugin(), GuardsOutputPlugin()]
         agent = llm_agent.LlmAgent(
-            model=advance_model,
+            model=Gemini(
+                model=advance_model,
+                client_kwargs={
+                    "http_options": types.HttpOptions(
+                        timeout=30000,
+                        retry_options=types.HttpRetryOptions(
+                            initial_delay=1, max_delay=10, attempts=3
+                        ),
+                    ),
+                },
+            ),
             name="red_agent_advance",
             instruction=RED_ADVANCE_INSTRUCTION,
         )

@@ -51,14 +51,21 @@ def detect_injection(user_input: str) -> InputStatus:
     Returns:
         ``"BLOCK"`` if injection detected (chặn), ``"ALLOW"`` otherwise (cho qua).
     """
+    normalized = re.sub(r"[​‌‍­﻿⁠]", "", user_input)
+
     INJECTION_PATTERNS = [
-        # TODO: Add at least 5 regex patterns
-        # Example:
-        # r"ignore (all )?(previous|above) instructions",
+        r"ignore\s+(all\s+)?(previous|above|prior|earlier)\s+(instructions|rules|prompts)",
+        r"you\s+are\s+now\b",
+        r"(show|reveal|display|print|output)\s+(your\s+)?(system\s+prompt|instructions|internal\s+prompt|hidden\s+prompt)",
+        r"(pretend|act)\s+(you\s+are|as)\s+(a\s+|an\s+)?(unrestricted|unfiltered|jailbroken|evil)",
+        r"disregard\s+(all\s+)?(previous|above|prior|your)\s+(instructions|rules|guidelines)",
+        r"(forget|override)\s+(all\s+)?(your\s+)?(rules|instructions|safety|guidelines|restrictions)",
+        r"do\s+not\s+follow\s+(your|any|the)\s+(rules|instructions|guidelines)",
+        r"bypass\s+(all\s+)?(safety|security|filters|restrictions|guardrails)",
     ]
 
     for pattern in INJECTION_PATTERNS:
-        if re.search(pattern, user_input, re.IGNORECASE):
+        if re.search(pattern, normalized, re.IGNORECASE):
             return "BLOCK"
     return "ALLOW"
 
@@ -86,12 +93,15 @@ def topic_filter(user_input: str) -> InputStatus:
     """
     input_lower = user_input.lower()
 
-    # TODO: Implement logic:
-    # 1. If input contains any blocked topic -> return "BLOCK"
-    # 2. If input doesn't contain any allowed topic -> return "BLOCK"
-    # 3. Otherwise -> return "ALLOW"
+    for topic in BLOCKED_TOPICS:
+        if topic in input_lower:
+            return "BLOCK"
 
-    pass  # Replace with your implementation
+    for topic in ALLOWED_TOPICS:
+        if topic in input_lower:
+            return "ALLOW"
+
+    return "BLOCK"
 
 
 # ============================================================
@@ -144,14 +154,19 @@ class InputGuardrailPlugin(base_plugin.BasePlugin):
         self.total_count += 1
         text = self._extract_text(user_message)
 
-        # TODO: Implement logic:
-        # 1. Call detect_injection(text)
-        #    - If "BLOCK": increment blocked_count, return self._block_response("...")
-        # 2. Call topic_filter(text)
-        #    - If "BLOCK": increment blocked_count, return self._block_response("...")
-        # 3. If both return "ALLOW": return None (let message through)
+        if detect_injection(text) == "BLOCK":
+            self.blocked_count += 1
+            return self._block_response(
+                "I cannot process that request. It appears to contain prompt injection."
+            )
 
-        pass  # Replace with your implementation
+        if topic_filter(text) == "BLOCK":
+            self.blocked_count += 1
+            return self._block_response(
+                "I'm a VinBank assistant and can only help with banking-related questions."
+            )
+
+        return None
 
 
 # ============================================================

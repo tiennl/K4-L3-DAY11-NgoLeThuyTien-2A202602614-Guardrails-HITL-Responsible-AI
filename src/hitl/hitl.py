@@ -67,32 +67,40 @@ class ConfidenceRouter:
         Returns:
             RoutingDecision with routing action and metadata
         """
-        # Optional: Implement routing logic
-        #
-        # 1. Check if action_type is in HIGH_RISK_ACTIONS
-        #    -> If yes: always escalate (action="escalate", priority="high",
-        #       requires_human=True, reason="High-risk action: {action_type}")
-        #
-        # 2. Check confidence thresholds:
-        #    - confidence >= 0.9:
-        #      action="auto_send", priority="low",
-        #      requires_human=False, reason="High confidence"
-        #
-        #    - 0.7 <= confidence < 0.9:
-        #      action="queue_review", priority="normal",
-        #      requires_human=True, reason="Medium confidence — needs review"
-        #
-        #    - confidence < 0.7:
-        #      action="escalate", priority="high",
-        #      requires_human=True, reason="Low confidence — escalating"
+        if action_type in HIGH_RISK_ACTIONS:
+            return RoutingDecision(
+                action="escalate",
+                confidence=confidence,
+                reason=f"High-risk action: {action_type}",
+                priority="high",
+                requires_human=True,
+            )
+
+        if confidence >= self.HIGH_THRESHOLD:
+            return RoutingDecision(
+                action="auto_send",
+                confidence=confidence,
+                reason="High confidence",
+                priority="low",
+                requires_human=False,
+            )
+
+        if confidence >= self.MEDIUM_THRESHOLD:
+            return RoutingDecision(
+                action="queue_review",
+                confidence=confidence,
+                reason="Medium confidence — needs review",
+                priority="normal",
+                requires_human=True,
+            )
 
         return RoutingDecision(
-            action="auto_send",
+            action="escalate",
             confidence=confidence,
-            reason="TODO: implement routing logic",
-            priority="low",
-            requires_human=False,
-        )  # TODO: Replace with implementation
+            reason="Low confidence — escalating",
+            priority="high",
+            requires_human=True,
+        )
 
 
 # ============================================================
@@ -115,33 +123,33 @@ class ConfidenceRouter:
 hitl_decision_points = [
     {
         "id": 1,
-        "name": "TODO: Name this decision point",
-        "trigger": "TODO: When does this trigger?",
-        "hitl_model": "TODO: human-in-the-loop / human-on-the-loop / human-as-tiebreaker",
-        "context_needed": "TODO: What does the reviewer need to see?",
-        "example": "TODO: Give a concrete example scenario",
-        "approval_path": "TODO: Explain approve, reject and timeout behavior",
-        "audit_fields": "TODO: List correlation ID, intent, diff and reviewer decision",
+        "name": "Outbound money transfer approval",
+        "trigger": "Agent proposes a transfer_money action above a small threshold, or to a new/unverified beneficiary.",
+        "hitl_model": "human-in-the-loop",
+        "context_needed": "Source/destination accounts, amount, currency, beneficiary history, agent's stated intent, any RAG/email content that influenced the decision.",
+        "example": "Customer's email mentions 'please wire 500,000,000 VND to this new supplier account'; agent drafts a transfer_money action instead of executing it directly.",
+        "approval_path": "Approve -> action executes and is logged with approval_id/reviewer_id. Reject -> action discarded, customer notified. Timeout (no reviewer response within SLA) -> auto-reject, escalate to on-call supervisor.",
+        "audit_fields": "correlation_id, user_id, intent, proposed_action (destination + payload diff), reviewer_id, approval_id, decision, decision_timestamp.",
     },
     {
         "id": 2,
-        "name": "TODO: Name this decision point",
-        "trigger": "TODO: When does this trigger?",
-        "hitl_model": "TODO: human-in-the-loop / human-on-the-loop / human-as-tiebreaker",
-        "context_needed": "TODO: What does the reviewer need to see?",
-        "example": "TODO: Give a concrete example scenario",
-        "approval_path": "TODO: Explain approve, reject and timeout behavior",
-        "audit_fields": "TODO: List correlation ID, intent, diff and reviewer decision",
+        "name": "Credential / secret disclosure request",
+        "trigger": "Input or output guardrail flags a request or response touching admin_password, api_key, or db_host (even if ultimately blocked).",
+        "hitl_model": "human-on-the-loop",
+        "context_needed": "Full conversation transcript, which layer flagged it (input_injection/output_filter), user_id, whether the block was overridden.",
+        "example": "A user claiming to be an on-call engineer asks the bot to 'confirm' the admin password for an incident ticket; guardrail blocks it and queues the transcript for security review.",
+        "approval_path": "Human reviewer periodically audits the queue (not blocking the user in real time); can flag the account for further investigation or confirm it was a benign false positive.",
+        "audit_fields": "correlation_id, user_id, matched_pattern/layer, request_id, reviewer_id, review_outcome, review_timestamp.",
     },
     {
         "id": 3,
-        "name": "TODO: Name this decision point",
-        "trigger": "TODO: When does this trigger?",
-        "hitl_model": "TODO: human-in-the-loop / human-on-the-loop / human-as-tiebreaker",
-        "context_needed": "TODO: What does the reviewer need to see?",
-        "example": "TODO: Give a concrete example scenario",
-        "approval_path": "TODO: Explain approve, reject and timeout behavior",
-        "audit_fields": "TODO: List correlation ID, intent, diff and reviewer decision",
+        "name": "Low-confidence banking advice",
+        "trigger": "ConfidenceRouter scores the agent's answer below the MEDIUM_THRESHOLD (0.7) for a non-high-risk banking question (e.g. ambiguous loan eligibility).",
+        "hitl_model": "human-as-tiebreaker",
+        "context_needed": "The question, the agent's draft answer, confidence score, and any conflicting source documents (rates table, policy doc).",
+        "example": "Customer asks about eligibility for a specific loan product with unusual conditions; agent's confidence is 0.55 because the policy is ambiguous.",
+        "approval_path": "Reviewer either approves the draft answer as-is, edits it, or escalates to a specialist. Timeout routes to a generic 'please contact a branch' fallback so the customer is never left waiting indefinitely.",
+        "audit_fields": "correlation_id, user_id, intent, draft_response, confidence_score, reviewer_id, final_response, decision_timestamp.",
     },
 ]
 
